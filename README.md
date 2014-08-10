@@ -22,10 +22,18 @@ If you load a page it remembers every link in the database of Greasemonkey. The 
 
 The screenshots give a good impression how the script works:
 
+##An unvisited reddit front page (as if that happens ;)
 ![Reddit unvisited](doc/assets/reddit1.png "Reddit unvisited")
+
+##The reddit front page after some visiting.
 ![Reddit visited](doc/assets/reddit2.png "Reddit visited")
+
+##After visiting the front page and revisiting it
 ![Reddit seen](doc/assets/reddit3.png "Reddit seen")
+
+##After visiting the front page with new links
 ![Reddit seen with new link](doc/assets/reddit4.png "Reddit seen with new link")
+Two links have already been seen but not been deemed clickworthy.
 
 # What the script does, technically
 It just goes through the a href elements, computes a hash and stores the hash. If it encounters a hash that already has been stored during loading, this link will be painted more transparently.
