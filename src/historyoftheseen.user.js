@@ -1,16 +1,23 @@
 // ==UserScript==
 // @name History of the Seen
 // @namespace bca_1QJwtr2Wk1RmhARm3Bv1LmDN2gEQCLp743
-// @description Script to implement a history of the seen approach for some news sites. Tested with Firefox 27.0.1 and GreaseMonkey 1.15
+// @description Script to implement a history of the seen approach for some news sites.
 // @author          Theoky
-// @version	        0.1c
-// @lastchanges     Initial version.
+// @version	        0.2
+// @lastchanges     Delete urls too old
+// @license         GNU GPL version 3
+// @released        2014-02-20
+// @updated         2014-08-14
+// @homepageURL   	https://github.com/theoky/HistoryOfTheSeen
 //
 // @grant      GM_getValue
 // @grant      GM_setValue
 // @grant      GM_deleteValue
 // @grant      GM_registerMenuCommand
 // @grant      GM_listValues
+//
+// for testing (set greasemonkey.fileIsGreaseable) 
+// @include file://*testhistory.html
 //
 // @include http*://*.derstandard.at/*
 // @include http*://*.faz.net/*
@@ -35,12 +42,12 @@
 // @include http*://kurier.at/*
 // @include http*://slashdot.org/*
 // @include http*://taz.de/*
-//
+
 // @require md5.js 
-//          was http://crypto-js.googlecode.com/svn/tags/3.1.2/build/rollups/md5.js
+// was require http://crypto-js.googlecode.com/svn/tags/3.1.2/build/rollups/md5.js
 // ==/UserScript==
-// 
-// Copyright (C) 2013-2014  T. Kopetzky - theoky
+
+// Copyright (C) 2014  T. Kopetzky - theoky
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -55,70 +62,117 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
+// Tested with Firefox 31 and GreaseMonkey 2.1
 
-// -------------------------------------------------
-// Functions
+//-------------------------------------------------
+//Functions
 
-function resetAllUrls()
-{
-    if (confirm('Are you sure you want to erase the complete seen history?')) {
-        var keys = GM_listValues();
-        for (var i=0, key=null; key=keys[i]; i++) {
-           GM_deleteValue(key);
-        }
-        document.location.reload(true);
-    }
-}
+//(function(){
 
-function resetUrlsForCurrentSite()
-{
-    if (confirm('Are you sure you want to erase the seen history for ' + 
-       document.baseURI + '?')) {
-        var keys = GM_listValues();
-        for (var i=0, key=null; key=keys[i]; i++) {
-            var base = GM_getValue(key);
-            if (base == document.baseURI)
-            {
-                GM_deleteValue(key);
-            }
-        }
-        document.location.reload(true);
-    }
-}
-
-// Main part
-
-// Menus
-GM_registerMenuCommand("Remove the seen history for this site.", resetUrlsForCurrentSite);
-GM_registerMenuCommand("Remove all seen history (for all sites)!", resetAllUrls);
-
-
-// Vars
-var allHrefs = document.getElementsByTagName("a");
-var theBase = document.baseURI;
-var elemMap = {};
-
-// Change the DOM
-
-// First loop: gather all new links and make already seen opaque.
-for(var i = 0; i < allHrefs.length; i++)
-{
-	var hash = 'm' + CryptoJS.MD5(allHrefs[i].href);
-	// setValue needs letter in the beginning, thus use of 'm'
-    
-	var key = GM_getValue(hash);
-	//console.log(hash.toString());
-    
-	if (typeof key != 'undefined') {
-		// key found -> loaded this reference already 
-		// change display
-		allHrefs[i].style.opacity = 0.3;
-	} else {
-		elemMap[hash] = theBase;
+	var defaultSettings = {
+			ageOfUrl: 7 	// age in days after a url is deleted from the store
+							// < 0 erases all dates (disables history) 
 	}
-}
 
-// remember all new urls to hide the next time
-for (var e2 in elemMap) {
-    GM_setValue(e2, elemMap[e2]);
-}
+	function resetAllUrls()
+	{
+		if (confirm('Are you sure you want to erase the complete seen history?')) {
+			var keys = GM_listValues();
+			for (var i=0, key=null; key=keys[i]; i++) {
+				GM_deleteValue(key);
+			}
+			document.location.reload(true);
+		}
+	}
+
+	function resetUrlsForCurrentSite()
+	{
+		if (confirm('Are you sure you want to erase the seen history for ' + 
+				document.baseURI + '?')) {
+			var keys = GM_listValues();
+			for (var i=0, key=null; key=keys[i]; i++) {
+				var base = GM_getValue(key);
+				if (base == document.baseURI)
+				{
+					GM_deleteValue(key);
+				}
+			}
+			document.location.reload(true);
+		}
+	}
+
+	function expireUrlsForCurrentSite()
+	{
+		var keys = GM_listValues();
+		if (!keys) {
+			return;
+		}
+
+		var cutOffDate = new Date();
+		
+		if (defaultSettings["ageOfUrl"] >= 0) {
+			cutOffDate.setHours(0,0,0,0);
+			cutOffDate.setDate((new Date()).getDate() - defaultSettings["ageOfUrl"]);
+		}
+
+		for (var i=0, key=null; key=keys[i]; i++) {
+			var dict = JSON.parse(GM_getValue(key, "{}"));
+			
+			if(dict) {
+				// console.log(dict["base"], cutOffDate.getTime(), dict["date"]);
+				if ((dict["base"] == document.baseURI) &&
+					 (cutOffDate.getTime() > dict["date"]))
+				{
+					GM_deleteValue(key);
+				}
+			}
+			else {
+				GM_log('Error! JSON.parse failed - dict is likely to be corrupted.');
+			}
+		}
+	}
+
+//	Main part
+
+//	Menus
+	GM_registerMenuCommand("Remove the seen history for this site.", resetUrlsForCurrentSite);
+	GM_registerMenuCommand("Remove all seen history (for all sites)!", resetAllUrls);
+
+	function run_script(){
+		// Vars
+		var allHrefs = document.getElementsByTagName("a");
+		var theBase = document.baseURI;
+		var elemMap = {};
+
+		// expire old data
+		expireUrlsForCurrentSite();
+		
+		// Change the DOM
+
+		// First loop: gather all new links and make already seen opaque.
+		for(var i = 0; i < allHrefs.length; i++)
+		{
+			var hash = 'm' + CryptoJS.MD5(allHrefs[i].href);
+			// setValue needs letter in the beginning, thus use of 'm'
+
+			var key = GM_getValue(hash);
+			// console.log(allHrefs[i].href, hash.toString());
+
+			if (typeof key != 'undefined') {
+				// key found -> loaded this reference already 
+				// change display
+				allHrefs[i].style.opacity = 0.3;
+			} else {
+				// key not found, store it with current date
+				elemMap[hash] = {"base":theBase, "date":(new Date()).getTime()};
+			}
+		}
+
+		// remember all new urls to hide the next time
+		for (var e2 in elemMap) {
+			GM_setValue(e2, JSON.stringify(elemMap[e2]));
+		}
+	}
+
+	run_script();
+//})();
