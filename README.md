@@ -45,7 +45,7 @@ A lot. ;) This is the first crude version of this script and it is not very soph
 * settings,
 * hiding paragraphs and not only links,
 * hiding links only after some time,
-* remembering links only after some time,
+* ~~remembering links only for some time,~~
 * hiding a specific context of a link,
 * and many more.
 
@@ -59,4 +59,4 @@ This is not allowed everywhere (because of possible code alteration etc.) so tha
 the code is here. 
 
 # Remarks
-Tested with Firefox 27.0.1 and GreaseMonkey 1.15
+Tested with Firefox 31 and GreaseMonkey 2.1
