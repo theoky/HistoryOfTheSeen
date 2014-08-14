@@ -3,8 +3,8 @@
 // @namespace bca_1QJwtr2Wk1RmhARm3Bv1LmDN2gEQCLp743
 // @description Script to implement a history of the seen approach for some news sites.
 // @author          Theoky
-// @version	        0.2
-// @lastchanges     Delete urls too old
+// @version	        0.3
+// @lastchanges     Fade out links
 // @license         GNU GPL version 3
 // @released        2014-02-20
 // @updated         2014-08-14
@@ -69,10 +69,17 @@
 
 //(function(){
 
-	var defaultSettings = {
-			ageOfUrl: 7 	// age in days after a url is deleted from the store
-							// < 0 erases all dates (disables history) 
+var defaultSettings = {
+			ageOfUrl: 7, 	// age in days after a url is deleted from the store
+							// < 0 erases all dates (disables history)
+			targetOpacity: 0.3,
+			steps: 10,
+			dimInterval: 12000
 	}
+	
+	var dimMap = {};
+	var countDownTimer = defaultSettings["steps"];
+	var theHRefs = null;
 
 	function resetAllUrls()
 	{
@@ -91,10 +98,11 @@
 				document.baseURI + '?')) {
 			var keys = GM_listValues();
 			for (var i=0, key=null; key=keys[i]; i++) {
-				var base = GM_getValue(key);
-				if (base == document.baseURI)
-				{
-					GM_deleteValue(key);
+				var dict = JSON.parse(GM_getValue(key, "{}"));
+				if(dict) {
+					if (dict["base"] == document.baseURI) {
+						GM_deleteValue(key);
+					}
 				}
 			}
 			document.location.reload(true);
@@ -143,6 +151,7 @@
 		var allHrefs = document.getElementsByTagName("a");
 		var theBase = document.baseURI;
 		var elemMap = {};
+		dimMap = {};
 
 		// expire old data
 		expireUrlsForCurrentSite();
@@ -161,16 +170,38 @@
 			if (typeof key != 'undefined') {
 				// key found -> loaded this reference already 
 				// change display
-				allHrefs[i].style.opacity = 0.3;
+				allHrefs[i].style.opacity = defaultSettings["targetOpacity"];
 			} else {
 				// key not found, store it with current date
 				elemMap[hash] = {"base":theBase, "date":(new Date()).getTime()};
+				dimMap[hash] = allHrefs[i];
 			}
 		}
 
 		// remember all new urls to hide the next time
 		for (var e2 in elemMap) {
 			GM_setValue(e2, JSON.stringify(elemMap[e2]));
+		}
+		
+		theHRefs = allHrefs;
+		to = setTimeout(dimLinks, defaultSettings["dimInterval"]);
+	}
+
+	function dimLinks() {
+		interval = (1 - defaultSettings["targetOpacity"])/defaultSettings["steps"];
+		countDownTimer = countDownTimer - 1;
+		curOpacity = defaultSettings["targetOpacity"] + interval*countDownTimer;
+
+		for(var i = 0; i < theHRefs.length; i++)
+		{
+			var hash = 'm' + CryptoJS.MD5(theHRefs[i].href);
+			if (hash in dimMap) {
+				theHRefs[i].style.opacity = curOpacity;
+			}
+		}
+		
+		if (countDownTimer > 0) {
+			to = setTimeout(dimLinks, defaultSettings["dimInterval"]);
 		}
 	}
 
