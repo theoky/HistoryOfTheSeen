@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name History of the Seen
-// @namespace bca_1QJwtr2Wk1RmhARm3Bv1LmDN2gEQCLp743
+// @namespace https://github.com/theoky/HistoryOfTheSeen
 // @description Script to implement a history of the seen approach for some news sites.
 // @author          Theoky
-// @version	        0.3
-// @lastchanges     Fade out links
+// @version	        0.31
+// @lastchanges     changed md5 lib
 // @license         GNU GPL version 3
 // @released        2014-02-20
 // @updated         2014-08-14
@@ -43,7 +43,8 @@
 // @include http*://slashdot.org/*
 // @include http*://taz.de/*
 
-// @require md5.js 
+// @require https://greasyfork.org/scripts/130-portable-md5-function/code/Portable%20MD5%20Function.js?version=10066
+// was require md5.js 
 // was require http://crypto-js.googlecode.com/svn/tags/3.1.2/build/rollups/md5.js
 // ==/UserScript==
 
@@ -74,7 +75,7 @@ var defaultSettings = {
 							// < 0 erases all dates (disables history)
 			targetOpacity: 0.3,
 			steps: 10,
-			dimInterval: 12000
+			dimInterval: 30000
 	}
 	
 	var dimMap = {};
@@ -161,7 +162,7 @@ var defaultSettings = {
 		// First loop: gather all new links and make already seen opaque.
 		for(var i = 0; i < allHrefs.length; i++)
 		{
-			var hash = 'm' + CryptoJS.MD5(allHrefs[i].href);
+			var hash = 'm' + hex_md5(allHrefs[i].href);
 			// setValue needs letter in the beginning, thus use of 'm'
 
 			var key = GM_getValue(hash);
@@ -194,7 +195,7 @@ var defaultSettings = {
 
 		for(var i = 0; i < theHRefs.length; i++)
 		{
-			var hash = 'm' + CryptoJS.MD5(theHRefs[i].href);
+			var hash = 'm' + hex_md5(theHRefs[i].href);
 			if (hash in dimMap) {
 				theHRefs[i].style.opacity = curOpacity;
 			}
