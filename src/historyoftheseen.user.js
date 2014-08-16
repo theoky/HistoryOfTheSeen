@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name History of the Seen
 // @namespace https://github.com/theoky/HistoryOfTheSeen
-// @description Script to implement a history of the seen approach for some news sites.
+// @description Script to implement a history of the seen approach for some news sites. Details at https://github.com/theoky/HistoryOfTheSeen
 // @author          Theoky
 // @version	        0.31
 // @lastchanges     changed md5 lib
