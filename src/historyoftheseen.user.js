@@ -3,8 +3,8 @@
 // @namespace https://github.com/theoky/HistoryOfTheSeen
 // @description Script to implement a history of the seen approach for some news sites. Details at https://github.com/theoky/HistoryOfTheSeen
 // @author          Theoky
-// @version	        0.35
-// @lastchanges     Remove all aged urls (plus based on domain, not on baseuri): less DB-storage, faster
+// @version	        0.36
+// @lastchanges     Menu: Remove info for domain
 // @license         GNU GPL version 3
 // @released        2014-02-20
 // @updated         2014-08-28
@@ -97,23 +97,30 @@ var defaultSettings = {
 		}
 	}
 
-	// TODO: reset URLs for current domain
-	
-	function resetUrlsForCurrentSite()
-	{
+	function resetUrlsForCurrentHelper(dKey, domainOrUri) {
 		if (confirm('Are you sure you want to erase the seen history for ' + 
-				document.baseURI + '?')) {
+				domainOrUri + '?')) {
 			var keys = GM_listValues();
 			for (var i=0, key=null; key=keys[i]; i++) {
 				var dict = JSON.parse(GM_getValue(key, "{}"));
 				if(dict) {
-					if (dict["base"] == document.baseURI) {
+					if (dict[dKey] == domainOrUri) {
 						GM_deleteValue(key);
 					}
 				}
 			}
 			document.location.reload(true);
 		}
+	}
+	
+	function resetUrlsForCurrentDomain()
+	{
+		resetUrlsForCurrentHelper("domain", document.domain)
+	}
+	
+	function resetUrlsForCurrentSite()
+	{
+		resetUrlsForCurrentHelper("base", document.baseURI)
 	}
 
 	function expireUrlsForCurrentSite()
@@ -161,6 +168,7 @@ var defaultSettings = {
 
 //	Menus
 	GM_registerMenuCommand("Remove the seen history for this site.", resetUrlsForCurrentSite);
+	GM_registerMenuCommand("Remove the seen history for this domain.", resetUrlsForCurrentDomain);
 	GM_registerMenuCommand("Remove all seen history (for all sites)!", resetAllUrls);
 
 	function run_script(){
