@@ -3,11 +3,11 @@
 // @namespace https://github.com/theoky/HistoryOfTheSeen
 // @description Script to implement a history of the seen approach for some news sites. Details at https://github.com/theoky/HistoryOfTheSeen
 // @author          Theoky
-// @version	        0.31
-// @lastchanges     changed md5 lib
+// @version	        0.35
+// @lastchanges     Remove all aged urls (plus based on domain, not on baseuri): less DB-storage, faster
 // @license         GNU GPL version 3
 // @released        2014-02-20
-// @updated         2014-08-14
+// @updated         2014-08-28
 // @homepageURL   	https://github.com/theoky/HistoryOfTheSeen
 //
 // @grant      GM_getValue
@@ -71,11 +71,15 @@
 //(function(){
 
 var defaultSettings = {
-			ageOfUrl: 7, 	// age in days after a url is deleted from the store
+			ageOfUrl: 5, 	// age in days after a url is deleted from the store
 							// < 0 erases all dates (disables history)
 			targetOpacity: 0.3,
 			steps: 10,
-			dimInterval: 30000
+			dimInterval: 30000,
+			expireAllDomains: true		// On fast machines this can be true and expires
+							// all domains in the database with each call. If false,
+							// only the urls of the current domain are expired which 
+							// is slightly faster. 
 	}
 	
 	var dimMap = {};
@@ -93,6 +97,8 @@ var defaultSettings = {
 		}
 	}
 
+	// TODO: reset URLs for current domain
+	
 	function resetUrlsForCurrentSite()
 	{
 		if (confirm('Are you sure you want to erase the seen history for ' + 
@@ -117,28 +123,38 @@ var defaultSettings = {
 			return;
 		}
 
-		var cutOffDate = new Date();
-		
-		if (defaultSettings["ageOfUrl"] >= 0) {
-			cutOffDate.setHours(0,0,0,0);
-			cutOffDate.setDate((new Date()).getDate() - defaultSettings["ageOfUrl"]);
-		}
+		var cutOffDate = calcCutOffDate(defaultSettings["ageOfUrl"]);
 
 		for (var i=0, key=null; key=keys[i]; i++) {
 			var dict = JSON.parse(GM_getValue(key, "{}"));
 			
 			if(dict) {
-				// console.log(dict["base"], cutOffDate.getTime(), dict["date"]);
-				if ((dict["base"] == document.baseURI) &&
-					 (cutOffDate.getTime() > dict["date"]))
-				{
-					GM_deleteValue(key);
+				try {
+					// console.log(dict["domain"], cutOffDate.getTime(), dict["date"]);
+					if (cutOffDate.getTime() > dict["date"]) {
+						if (defaultSettings["expireAllDomains"] ||
+							(dict["domain"] == document.domain))
+						{
+							GM_deleteValue(key);
+						}
+					}
+				} catch (e) {
+					GM_log(e);
 				}
 			}
 			else {
 				GM_log('Error! JSON.parse failed - dict is likely to be corrupted.');
 			}
 		}
+	}
+
+	function calcCutOffDate(age) {
+		var cutOffDate = new Date();
+		if (age >= 0) {
+			cutOffDate.setHours(0,0,0,0);
+			cutOffDate.setDate((new Date()).getDate() - age);
+		}
+		return cutOffDate;
 	}
 
 //	Main part
@@ -151,6 +167,7 @@ var defaultSettings = {
 		// Vars
 		var allHrefs = document.getElementsByTagName("a");
 		var theBase = document.baseURI;
+		var theDomain = document.domain;
 		var elemMap = {};
 		dimMap = {};
 
@@ -174,7 +191,7 @@ var defaultSettings = {
 				allHrefs[i].style.opacity = defaultSettings["targetOpacity"];
 			} else {
 				// key not found, store it with current date
-				elemMap[hash] = {"base":theBase, "date":(new Date()).getTime()};
+				elemMap[hash] = {"domain":theDomain, "date":(new Date()).getTime(), "base":theBase};
 				dimMap[hash] = allHrefs[i];
 			}
 		}
