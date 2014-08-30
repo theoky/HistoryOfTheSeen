@@ -4,7 +4,7 @@
 // @description Script to implement a history of the seen approach for some news sites. Details at https://github.com/theoky/HistoryOfTheSeen
 // @author          Theoky
 // @version	        0.39
-// @lastchanges     new urls, dot notation, changed dimming, hide more elements
+// @lastchanges     new urls, dot notation, changed dimming, hide more elements by looking up the hierarchy
 // @license         GNU GPL version 3
 // @released        2014-02-20
 // @updated         2014-08-30
@@ -88,6 +88,7 @@
 		{
 			url : '.*\.?derstandard\.at',
 			// TODO: der, die, das standard
+			upTrigger: "../a",
 			parentHints : [
 					"ancestor::div[contains(concat(' ', @class, ' '), ' text ')]",
 					"ancestor::ul[@class='stories']" ]
@@ -95,11 +96,13 @@
 
 		{
 			url : 'notalwaysright\.com',
+			upTrigger: "../a",
 			parentHints : [ "ancestor::div[contains(concat(' ', @class, ' '), ' post ')]" ]
 		},
 
 		{
 			url : '.*\.?golem.de',
+			upTrigger: "../a",
 			parentHints : [ "ancestor::li",
 					"ancestor::section[@id='index-promo']",
 					"ancestor::section[contains(concat(' ', @class, ' '), ' promo ')]" ]
@@ -107,6 +110,8 @@
 
 		{
 			url : '.*\.?reddit.com',
+			// class="title may-blank  srTagged imgScanned"
+			upTrigger: "../a[contains(@class, 'title') and contains(@class, 'may-blank')]",
 			parentHints : [ "ancestor::div[contains(concat(' ', @class, ' '), ' thing ')]" ]
 		}
 	]
@@ -195,9 +200,11 @@
 		}
 		return cutOffDate;
 	}
-	
+
+	/*
+	 * Find the settings for a given URL
+	 */
 	function findPerUrlSettings(theSettings, aDomain) {
-//		console.log("findPerUrlSettings", aDomain);
 		for (var i=0; i < theSettings.length; ++i) {
 			var myRegExp = new RegExp(theSettings[i].url, 'i');
 			if (aDomain.match(myRegExp)) {
@@ -206,6 +213,9 @@
 		}
 	}
 
+	/*
+	 * Find the parent element as specified in the settings.
+	 */
 	function locateParentElem(curSettings, aDomain, aRoot) {
 		if (!curSettings) {
 			return null;
@@ -222,6 +232,22 @@
 		}
 		return res;
 	}
+	
+	/*
+	 * Check if the current node qualifies for looking up the hierarchy. 
+	 */
+	function goUp(curSettings, aRoot) {
+		if (!curSettings) {
+			return null;
+		}
+
+		res = null
+		if (curSettings.upTrigger != "") {
+			res = document.evaluate(curSettings.upTrigger, aRoot, null, 9, null).singleNodeValue
+		}
+		return res != null
+	}
+	
 	
 	function dimLinks() {
 		interval = (1 - defaultSettings.targetOpacity4Dim)/defaultSettings.steps;
@@ -277,11 +303,16 @@
 			if (typeof key != 'undefined') {
 				// key found -> loaded this reference already 
 				
-				pe = locateParentElem(curSettings, theDomain, allHrefs[i])
-				// console.log("locate parent done", pe);
-				if (pe) {
-					pe.style.opacity = defaultSettings.targetOpacity;
-				} else {
+				done = false
+				if(goUp(curSettings, allHrefs[i])) {
+					pe = locateParentElem(curSettings, theDomain, allHrefs[i])
+					// console.log("locate parent done", pe);
+					if (pe) {
+						pe.style.opacity = defaultSettings.targetOpacity;
+						done = true
+					}
+				}
+				if (!done) {
 					// change display
 					allHrefs[i].style.opacity = defaultSettings.targetOpacity;
 				}
