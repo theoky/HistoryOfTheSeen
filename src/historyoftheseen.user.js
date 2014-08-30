@@ -3,11 +3,11 @@
 // @namespace https://github.com/theoky/HistoryOfTheSeen
 // @description Script to implement a history of the seen approach for some news sites. Details at https://github.com/theoky/HistoryOfTheSeen
 // @author          Theoky
-// @version	        0.39
-// @lastchanges     new urls, dot notation, changed dimming, hide more elements by looking up the hierarchy
+// @version	        0.40
+// @lastchanges     semicolons, upTriggers, clean DB only daily
 // @license         GNU GPL version 3
 // @released        2014-02-20
-// @updated         2014-08-30
+// @updated         2014-08-31
 // @homepageURL   	https://github.com/theoky/HistoryOfTheSeen
 //
 // @grant      GM_getValue
@@ -78,10 +78,11 @@
 			targetOpacity4Dim: 0.65,
 			steps: 10,
 			dimInterval: 30000,
-			expireAllDomains: true		// On fast machines this can be true and expires
+			expireAllDomains: true,		// On fast machines this can be true and expires
 							// all domains in the database with each call. If false,
 							// only the urls of the current domain are expired which 
-							// is slightly faster. 
+							// is slightly faster.
+			cleanOnlyDaily: true
 		}
 
 	var perUrlSettings = [
@@ -96,7 +97,7 @@
 
 		{
 			url : 'notalwaysright\.com',
-			upTrigger: "../a",
+			upTrigger: "../a[@rel='bookmark']",
 			parentHints : [ "ancestor::div[contains(concat(' ', @class, ' '), ' post ')]" ]
 		},
 
@@ -120,6 +121,7 @@
 	var countDownTimer = defaultSettings.steps;
 	var theHRefs = null;
 	var curSettings = null;
+	var keyLastExpireOp = "lastExpire";
 
 	function resetAllUrls() {
 		if (confirm('Are you sure you want to erase the complete seen history?')) {
@@ -155,17 +157,25 @@
 		resetUrlsForCurrentHelper("base", document.baseURI)
 	}
 
-	function expireUrlsForCurrentSite()	{
-		// TODO: do this only once a day
+	function expireUrls()	{
+		if (defaultSettings.cleanOnlyDaily) {
+			lastExpireDate = new Date(GM_getValue(keyLastExpireOp, nDaysOlderFromNow(2)));
+			diff = Math.abs((new Date()) - lastExpireDate);
+			if (diff / 1000 / 3600 / 24 < 1) {
+				// less than one day -> no DB cleaning
+				return;
+			}
+		}
+
 		var keys = GM_listValues();
 		if (!keys) {
 			return;
 		}
 
-		var cutOffDate = calcCutOffDate(defaultSettings.ageOfUrl);
+		var cutOffDate = nDaysOlderFromNow(defaultSettings.ageOfUrl);
 
 		for (var i=0, key=null; key=keys[i]; i++) {
-			if (key == "lastExpire"){
+			if (key == keyLastExpireOp){
 				continue;
 			}
 				
@@ -189,16 +199,22 @@
 				console.log('Error! JSON.parse failed - dict is likely to be corrupted.');
 			}
 		}
-		GM_setValue("lastExpire", new Date());
+		GM_setValue(keyLastExpireOp, new Date());
 	}
 
-	function calcCutOffDate(age) {
-		var cutOffDate = new Date();
+	function nDaysOlderFromNow(age, aDate, zeroHour) {
+		aDate = typeof aDate !== 'undefined' ? aDate : new Date();
+		zeroHour = typeof zeroHour !== 'undefined' ? zeroHour : true;
+		
+		var dateStore = new Date(aDate.getTime());
+		var workDate = aDate;
 		if (age >= 0) {
-			cutOffDate.setHours(0,0,0,0);
-			cutOffDate.setDate((new Date()).getDate() - age);
+			workDate.setDate(dateStore.getDate() - age);
+			if (zeroHour) {
+				workDate.setHours(0,0,0,0);
+			}
 		}
-		return cutOffDate;
+		return workDate;
 	}
 
 	/*
@@ -224,7 +240,7 @@
 		var res = null;
 		for (xpath = 0; xpath < curSettings.parentHints.length; ++xpath) {
 			// console.log("locateParentElem 2", curSettings.parentHints[xpath], aRoot);
-			res = document.evaluate(curSettings.parentHints[xpath], aRoot, null, 9, null).singleNodeValue
+			res = document.evaluate(curSettings.parentHints[xpath], aRoot, null, 9, null).singleNodeValue;
 			if (res) {
 				// console.log("locateParentElem found something");
 				return res;
@@ -241,9 +257,9 @@
 			return null;
 		}
 
-		res = null
+		res = null;
 		if (curSettings.upTrigger != "") {
-			res = document.evaluate(curSettings.upTrigger, aRoot, null, 9, null).singleNodeValue
+			res = document.evaluate(curSettings.upTrigger, aRoot, null, 9, null).singleNodeValue;
 		}
 		return res != null
 	}
@@ -287,7 +303,7 @@
 		// console.log(curSettings);
 
 		// expire old data
-		expireUrlsForCurrentSite();
+		expireUrls();
 
 		// Change the DOM
 
@@ -303,13 +319,13 @@
 			if (typeof key != 'undefined') {
 				// key found -> loaded this reference already 
 				
-				done = false
+				done = false;
 				if(goUp(curSettings, allHrefs[i])) {
 					pe = locateParentElem(curSettings, theDomain, allHrefs[i])
 					// console.log("locate parent done", pe);
 					if (pe) {
 						pe.style.opacity = defaultSettings.targetOpacity;
-						done = true
+						done = true;
 					}
 				}
 				if (!done) {
