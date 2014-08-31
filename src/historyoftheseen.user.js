@@ -3,8 +3,8 @@
 // @namespace https://github.com/theoky/HistoryOfTheSeen
 // @description Script to implement a history of the seen approach for some news sites. Details at https://github.com/theoky/HistoryOfTheSeen
 // @author          Theoky
-// @version	        0.40
-// @lastchanges     semicolons, upTriggers, clean DB only daily
+// @version	        0.41
+// @lastchanges     multiple urls for settings
 // @license         GNU GPL version 3
 // @released        2014-02-20
 // @updated         2014-08-31
@@ -87,8 +87,7 @@
 
 	var perUrlSettings = [
 		{
-			url : '.*\.?derstandard\.at',
-			// TODO: der, die, das standard
+			url : ['.*\.?derstandard\.at', '.*\.?diestandard\.at', '.*\.?dastandard\.at' ], 
 			upTrigger: "../a",
 			parentHints : [
 					"ancestor::div[contains(concat(' ', @class, ' '), ' text ')]",
@@ -96,13 +95,13 @@
 		},
 
 		{
-			url : 'notalwaysright\.com',
+			url : ['notalwaysright\.com'],
 			upTrigger: "../a[@rel='bookmark']",
 			parentHints : [ "ancestor::div[contains(concat(' ', @class, ' '), ' post ')]" ]
 		},
 
 		{
-			url : '.*\.?golem.de',
+			url : ['.*\.?golem.de'],
 			upTrigger: "../a",
 			parentHints : [ "ancestor::li",
 					"ancestor::section[@id='index-promo']",
@@ -110,7 +109,7 @@
 		},
 
 		{
-			url : '.*\.?reddit.com',
+			url : ['.*\.?reddit.com'],
 			// class="title may-blank  srTagged imgScanned"
 			upTrigger: "../a[contains(@class, 'title') and contains(@class, 'may-blank')]",
 			parentHints : [ "ancestor::div[contains(concat(' ', @class, ' '), ' thing ')]" ]
@@ -222,9 +221,11 @@
 	 */
 	function findPerUrlSettings(theSettings, aDomain) {
 		for (var i=0; i < theSettings.length; ++i) {
-			var myRegExp = new RegExp(theSettings[i].url, 'i');
-			if (aDomain.match(myRegExp)) {
-				return theSettings[i];
+			for (var j = 0; j < theSettings[i].url.length; ++j) {
+				var myRegExp = new RegExp(theSettings[i].url[j], 'i');
+				if (aDomain.match(myRegExp)) {
+					return theSettings[i];
+				}
 			}
 		}
 	}
