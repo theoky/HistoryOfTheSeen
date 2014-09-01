@@ -3,11 +3,11 @@
 // @namespace https://github.com/theoky/HistoryOfTheSeen
 // @description Script to implement a history of the seen approach for some news sites. Details at https://github.com/theoky/HistoryOfTheSeen
 // @author          Theoky
-// @version	        0.41
-// @lastchanges     multiple urls for settings
+// @version	        0.411
+// @lastchanges     a new way to handle special cases like slashdot
 // @license         GNU GPL version 3
 // @released        2014-02-20
-// @updated         2014-08-31
+// @updated         2014-09-1
 // @homepageURL   	https://github.com/theoky/HistoryOfTheSeen
 //
 // @grant      GM_getValue
@@ -42,7 +42,7 @@
 // @include http*://kurier.at/*
 // @include http*://slashdot.org/*
 // @include http*://taz.de/*
-// @include http*://notalwaysright.com/
+// @include http*://notalwaysright.com/*
 
 // @require https://greasyfork.org/scripts/130-portable-md5-function/code/Portable%20MD5%20Function.js?version=10066
 // was require md5.js 
@@ -85,7 +85,28 @@
 			cleanOnlyDaily: true
 		}
 
+	var defTag = 'a';
+	var defGetContent = function(elem) {
+		if ((typeof elem != 'undefined') && (typeof elem.href != 'undefined')) {
+			return elem.href;
+		}
+		return 'undefined';
+	}
+	
 	var perUrlSettings = [
+  		{
+			url : ['.*\.?slashdot\.org' ],
+			tag : 'article',
+			upTrigger: "../article",
+			getContent: function(elem) {
+				if ((typeof elem != 'undefined') && (typeof elem.id != 'undefined')) {
+					return elem.id;
+				}
+				return 'undefined';
+			},
+			parentHints : [ ] 
+		},
+
 		{
 			url : ['.*\.?derstandard\.at', '.*\.?diestandard\.at', '.*\.?dastandard\.at' ], 
 			upTrigger: "../a",
@@ -255,7 +276,7 @@
 	 */
 	function goUp(curSettings, aRoot) {
 		if (!curSettings) {
-			return null;
+			return false;
 		}
 
 		res = null;
@@ -293,7 +314,6 @@
 
 	function run_script() {
 		// Vars
-		var allHrefs = document.getElementsByTagName("a");
 		var theBase = document.baseURI;
 		var theDomain = document.domain;
 		var elemMap = {};
@@ -301,7 +321,19 @@
 		dimMap = {};
 
 		curSettings = findPerUrlSettings(perUrlSettings, theDomain);
-		// console.log(curSettings);
+
+		var tag = defTag;
+		var getContent = defGetContent;
+		if (typeof curSettings != 'undefined') {
+			if (typeof curSettings.tag != 'undefined') {
+				tag = curSettings.tag;
+			}
+			if (typeof curSettings.getContent != 'undefined') {
+				getContent = curSettings.getContent;
+			}
+		}
+		// console.log(tag, getContent);
+		var allTagElems = document.getElementsByTagName(tag);
 
 		// expire old data
 		expireUrls();
@@ -309,9 +341,9 @@
 		// Change the DOM
 
 		// First loop: gather all new links and make already seen opaque.
-		for(var i = 0; i < allHrefs.length; i++)
+		for(var i = 0; i < allTagElems.length; i++)
 		{
-			var hash = 'm' + hex_md5(allHrefs[i].href);
+			var hash = 'm' + hex_md5(getContent(allTagElems[i]));
 			// setValue needs letter in the beginning, thus use of 'm'
 
 			var key = GM_getValue(hash);
@@ -321,8 +353,8 @@
 				// key found -> loaded this reference already 
 				
 				done = false;
-				if(goUp(curSettings, allHrefs[i])) {
-					pe = locateParentElem(curSettings, theDomain, allHrefs[i])
+				if(goUp(curSettings, allTagElems[i])) {
+					pe = locateParentElem(curSettings, theDomain, allTagElems[i])
 					// console.log("locate parent done", pe);
 					if (pe) {
 						pe.style.opacity = defaultSettings.targetOpacity;
@@ -331,13 +363,13 @@
 				}
 				if (!done) {
 					// change display
-					allHrefs[i].style.opacity = defaultSettings.targetOpacity;
+					allTagElems[i].style.opacity = defaultSettings.targetOpacity;
 				}
 				
 			} else {
 				// key not found, store it with current date
 				elemMap[hash] = {"domain":theDomain, "date":(new Date()).getTime(), "base":theBase};
-				dimMap[hash] = allHrefs[i];
+				dimMap[hash] = allTagElems[i];
 			}
 		}
 
@@ -346,7 +378,7 @@
 			GM_setValue(e2, JSON.stringify(elemMap[e2]));
 		}
 		
-		theHRefs = allHrefs;
+		theHRefs = allTagElems;
 		to = setTimeout(dimLinks, defaultSettings.dimInterval);
 	}
 
