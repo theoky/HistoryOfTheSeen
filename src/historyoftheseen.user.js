@@ -3,11 +3,11 @@
 // @namespace https://github.com/theoky/HistoryOfTheSeen
 // @description Script to implement a history of the seen approach for some news sites. Details at https://github.com/theoky/HistoryOfTheSeen
 // @author          Theoky
-// @version	        0.411
-// @lastchanges     a new way to handle special cases like slashdot
+// @version	        0.412
+// @lastchanges     fixed some very small errors
 // @license         GNU GPL version 3
 // @released        2014-02-20
-// @updated         2014-09-1
+// @updated         2014-09-2
 // @homepageURL   	https://github.com/theoky/HistoryOfTheSeen
 //
 // @grant      GM_getValue
@@ -83,7 +83,7 @@
 							// only the urls of the current domain are expired which 
 							// is slightly faster.
 			cleanOnlyDaily: true
-		}
+		};
 
 	var defTag = 'a';
 	var defGetContent = function(elem) {
@@ -91,7 +91,7 @@
 			return elem.href;
 		}
 		return 'undefined';
-	}
+	};
 	
 	var perUrlSettings = [
   		{
@@ -135,7 +135,7 @@
 			upTrigger: "../a[contains(@class, 'title') and contains(@class, 'may-blank')]",
 			parentHints : [ "ancestor::div[contains(concat(' ', @class, ' '), ' thing ')]" ]
 		}
-	]
+	];
 	
 	var dimMap = {};
 	var countDownTimer = defaultSettings.steps;
@@ -170,11 +170,11 @@
 	}
 	
 	function resetUrlsForCurrentDomain() {
-		resetUrlsForCurrentHelper("domain", document.domain)
+		resetUrlsForCurrentHelper("domain", document.domain);
 	}
 	
 	function resetUrlsForCurrentSite() {
-		resetUrlsForCurrentHelper("base", document.baseURI)
+		resetUrlsForCurrentHelper("base", document.baseURI);
 	}
 
 	function expireUrls()	{
@@ -280,10 +280,10 @@
 		}
 
 		res = null;
-		if (curSettings.upTrigger != "") {
+		if (curSettings.upTrigger !== "") {
 			res = document.evaluate(curSettings.upTrigger, aRoot, null, 9, null).singleNodeValue;
 		}
-		return res != null
+		return res !== null;
 	}
 	
 	
