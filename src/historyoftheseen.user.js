@@ -3,8 +3,8 @@
 // @namespace https://github.com/theoky/HistoryOfTheSeen
 // @description Script to implement a history of the seen approach for some news sites. Details at https://github.com/theoky/HistoryOfTheSeen
 // @author          Theoky
-// @version	        0.412
-// @lastchanges     fixed some very small errors
+// @version	        0.414
+// @lastchanges     Only visible elements are marked as seen. Scrolling works, too.
 // @license         GNU GPL version 3
 // @released        2014-02-20
 // @updated         2014-09-2
@@ -44,6 +44,7 @@
 // @include http*://taz.de/*
 // @include http*://notalwaysright.com/*
 
+// @require http://code.jquery.com/jquery-2.1.1.min.js
 // @require https://greasyfork.org/scripts/130-portable-md5-function/code/Portable%20MD5%20Function.js?version=10066
 // was require md5.js 
 // was require http://crypto-js.googlecode.com/svn/tags/3.1.2/build/rollups/md5.js
@@ -64,7 +65,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
-// Tested with Firefox 31 and GreaseMonkey 2.1
+// Tested with Firefox 32 and GreaseMonkey 2.2
 
 //-------------------------------------------------
 //Functions
@@ -82,7 +83,8 @@
 							// all domains in the database with each call. If false,
 							// only the urls of the current domain are expired which 
 							// is slightly faster.
-			cleanOnlyDaily: true
+			cleanOnlyDaily: true,
+			considerViewPort: true
 		};
 
 	var defTag = 'a';
@@ -92,6 +94,8 @@
 		}
 		return 'undefined';
 	};
+	var defAfterScrollDelay = 750;
+	var DO_DEBUG = false;
 	
 	var perUrlSettings = [
   		{
@@ -142,7 +146,17 @@
 	var theHRefs = null;
 	var curSettings = null;
 	var keyLastExpireOp = "lastExpire";
-
+	var timeOutAfterLastScroll = "undefined";
+	var tag2Process = null;
+	var getContentFct = null;
+	var theDomain = null;
+	
+	function debuglog(msg) {
+		if (DO_DEBUG) {
+			console.log(msg);
+		}
+	}
+	
 	function resetAllUrls() {
 		if (confirm('Are you sure you want to erase the complete seen history?')) {
 			var keys = GM_listValues();
@@ -179,8 +193,8 @@
 
 	function expireUrls()	{
 		if (defaultSettings.cleanOnlyDaily) {
-			lastExpireDate = new Date(GM_getValue(keyLastExpireOp, nDaysOlderFromNow(2)));
-			diff = Math.abs((new Date()) - lastExpireDate);
+			var lastExpireDate = new Date(GM_getValue(keyLastExpireOp, nDaysOlderFromNow(2)));
+			var diff = Math.abs((new Date()) - lastExpireDate);
 			if (diff / 1000 / 3600 / 24 < 1) {
 				// less than one day -> no DB cleaning
 				return;
@@ -223,8 +237,8 @@
 	}
 
 	function nDaysOlderFromNow(age, aDate, zeroHour) {
-		aDate = typeof aDate !== 'undefined' ? aDate : new Date();
-		zeroHour = typeof zeroHour !== 'undefined' ? zeroHour : true;
+		var aDate = typeof aDate !== 'undefined' ? aDate : new Date();
+		var zeroHour = typeof zeroHour !== 'undefined' ? zeroHour : true;
 		
 		var dateStore = new Date(aDate.getTime());
 		var workDate = aDate;
@@ -260,7 +274,7 @@
 		}
 		// console.log("locateParentElem 1", curSettings.url);
 		var res = null;
-		for (xpath = 0; xpath < curSettings.parentHints.length; ++xpath) {
+		for (var xpath = 0; xpath < curSettings.parentHints.length; ++xpath) {
 			// console.log("locateParentElem 2", curSettings.parentHints[xpath], aRoot);
 			res = document.evaluate(curSettings.parentHints[xpath], aRoot, null, 9, null).singleNodeValue;
 			if (res) {
@@ -279,7 +293,7 @@
 			return false;
 		}
 
-		res = null;
+		var res = null;
 		if (curSettings.upTrigger !== "") {
 			res = document.evaluate(curSettings.upTrigger, aRoot, null, 9, null).singleNodeValue;
 		}
@@ -287,11 +301,15 @@
 	}
 	
 	
+	/*
+	 * Set the opacity for specified links
+	 */
 	function dimLinks() {
-		interval = (1 - defaultSettings.targetOpacity4Dim)/defaultSettings.steps;
-		countDownTimer = countDownTimer - 1;
-		curOpacity = defaultSettings.targetOpacity4Dim + interval*countDownTimer;
+		var interval = (1 - defaultSettings.targetOpacity4Dim)/defaultSettings.steps;
+		var countDownTimer = countDownTimer - 1;
+		var curOpacity = defaultSettings.targetOpacity4Dim + interval*countDownTimer;
 
+		// TODO: Better iterate over dimmap
 		for(var i = 0; i < theHRefs.length; i++)
 		{
 			var hash = 'm' + hex_md5(theHRefs[i].href);
@@ -301,75 +319,92 @@
 		}
 		
 		if (countDownTimer > 0) {
-			to = setTimeout(dimLinks, defaultSettings.dimInterval);
+			var to = setTimeout(dimLinks, defaultSettings.dimInterval);
 		}
 	}
+	
+	/*
+	 * Check if an element is fully drawn on the viewport 
+	 * from http://stackoverflow.com/questions/487073/check-if-element-is-visible-after-scrolling?lq=1
+	 */
+	function isFullyInView(elem)
+	{
+	    var docViewTop = $(window).scrollTop();
+	    var docViewBottom = docViewTop + $(window).height();
 
-//	Main part
+	    var elemTop = $(elem).offset().top;
+	    var elemBottom = elemTop + $(elem).height();
 
-//	Menus
-	GM_registerMenuCommand("Remove the seen history for this site.", resetUrlsForCurrentSite);
-	GM_registerMenuCommand("Remove the seen history for this domain.", resetUrlsForCurrentDomain);
-	GM_registerMenuCommand("Remove all seen history (for all sites)!", resetAllUrls);
+	    return ((elemBottom >= docViewTop) && (elemTop <= docViewBottom)
+	      && (elemBottom <= docViewBottom) &&  (elemTop >= docViewTop) );
+	}
 
-	function run_script() {
-		// Vars
-		var theBase = document.baseURI;
-		var theDomain = document.domain;
-		var elemMap = {};
-		
-		dimMap = {};
-
-		curSettings = findPerUrlSettings(perUrlSettings, theDomain);
-
-		var tag = defTag;
-		var getContent = defGetContent;
-		if (typeof curSettings != 'undefined') {
-			if (typeof curSettings.tag != 'undefined') {
-				tag = curSettings.tag;
-			}
-			if (typeof curSettings.getContent != 'undefined') {
-				getContent = curSettings.getContent;
-			}
+	/*
+	 * Called after scrolling 
+	 */
+	function evaluateElems() {
+		debuglog("evaluate all");
+		processElements(false);
+		timeOutAfterLastScroll = "undefined";
+	} 
+	
+	/*
+	 * Wait for scrolling to end
+	 */
+	function onScrollStart()
+	{
+		if (timeOutAfterLastScroll !== "undefined") {
+			window.clearTimeout(timeOutAfterLastScroll)
 		}
-		// console.log(tag, getContent);
-		var allTagElems = document.getElementsByTagName(tag);
+		timeOutAfterLastScroll = setTimeout(evaluateElems, defAfterScrollDelay);
+	}
 
-		// expire old data
-		expireUrls();
+	/*
+	 * Process all elements
+	 */
+	function processElements(firstCall) {
+		var allTagElems = document.getElementsByTagName(tag2Process);
+		var elemMap = {};
+		var theBase = document.baseURI;
 
 		// Change the DOM
 
 		// First loop: gather all new links and make already seen opaque.
 		for(var i = 0; i < allTagElems.length; i++)
 		{
-			var hash = 'm' + hex_md5(getContent(allTagElems[i]));
+			var hash = 'm' + hex_md5(getContentFct(allTagElems[i]));
 			// setValue needs letter in the beginning, thus use of 'm'
 
 			var key = GM_getValue(hash);
-			// console.log(allHrefs[i].href, hash.toString());
 
-			if (typeof key != 'undefined') {
+			if (typeof key !== 'undefined') {
 				// key found -> loaded this reference already 
-				
-				done = false;
-				if(goUp(curSettings, allTagElems[i])) {
-					pe = locateParentElem(curSettings, theDomain, allTagElems[i])
-					// console.log("locate parent done", pe);
-					if (pe) {
-						pe.style.opacity = defaultSettings.targetOpacity;
-						done = true;
+
+				if (firstCall) {
+					var done = false;
+					if(goUp(curSettings, allTagElems[i])) {
+						var pe = locateParentElem(curSettings, theDomain, allTagElems[i])
+						// console.log("locate parent done", pe);
+						if (pe) {
+							pe.style.opacity = defaultSettings.targetOpacity;
+							done = true;
+						}
 					}
-				}
-				if (!done) {
-					// change display
-					allTagElems[i].style.opacity = defaultSettings.targetOpacity;
+					if (!done) {
+						// change display
+						allTagElems[i].style.opacity = defaultSettings.targetOpacity;
+					}
 				}
 				
 			} else {
-				// key not found, store it with current date
-				elemMap[hash] = {"domain":theDomain, "date":(new Date()).getTime(), "base":theBase};
-				dimMap[hash] = allTagElems[i];
+				//check if element is fully visible
+				if (isFullyInView(allTagElems[i])) {
+					debuglog(allTagElems[i] + " is in view");
+
+					// key not found, store it with current date
+					elemMap[hash] = {"domain":theDomain, "date":(new Date()).getTime(), "base":theBase};
+					dimMap[hash] = allTagElems[i];
+				}
 			}
 		}
 
@@ -379,7 +414,39 @@
 		}
 		
 		theHRefs = allTagElems;
-		to = setTimeout(dimLinks, defaultSettings.dimInterval);
+		if (firstCall) {
+			var to = setTimeout(dimLinks, defaultSettings.dimInterval);
+		}
+	}
+	
+//	Main part
+
+//	Menus
+	GM_registerMenuCommand("Remove the seen history for this site.", resetUrlsForCurrentSite);
+	GM_registerMenuCommand("Remove the seen history for this domain.", resetUrlsForCurrentDomain);
+	GM_registerMenuCommand("Remove all seen history (for all sites)!", resetAllUrls);
+
+	function run_script() {
+		// Vars
+		
+		dimMap = {};
+		theDomain = document.domain;
+
+		curSettings = findPerUrlSettings(perUrlSettings, theDomain);
+		tag2Process = defTag;
+		getContentFct = defGetContent;
+		if (typeof curSettings != 'undefined') {
+			if (typeof curSettings.tag != 'undefined') {
+				tag2Process = curSettings.tag;
+			}
+			if (typeof curSettings.getContent != 'undefined') {
+				getContentFct = curSettings.getContent;
+			}
+		}
+		
+		expireUrls();
+		processElements(true);
+		window.addEventListener("scroll", onScrollStart, false);
 	}
 
 	run_script();
