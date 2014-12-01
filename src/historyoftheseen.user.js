@@ -3,11 +3,11 @@
 // @namespace https://github.com/theoky/HistoryOfTheSeen
 // @description Script to implement a history of the seen approach for some news sites. Details at https://github.com/theoky/HistoryOfTheSeen
 // @author          Theoky
-// @version	        0.414
-// @lastchanges     Only visible elements are marked as seen. Scrolling works, too.
+// @version	        0.417
+// @lastchanges     The New York Times
 // @license         GNU GPL version 3
 // @released        2014-02-20
-// @updated         2014-09-2
+// @updated         2014-11-30
 // @homepageURL   	https://github.com/theoky/HistoryOfTheSeen
 //
 // @grant      GM_getValue
@@ -15,8 +15,9 @@
 // @grant      GM_deleteValue
 // @grant      GM_registerMenuCommand
 // @grant      GM_listValues
+// @grant      GM_addStyle
 //
-// for testing (set greasemonkey.fileIsGreaseable) 
+// for testing purposes (set Firefox greasemonkey.fileIsGreaseable) 
 // @include file://*testhistory.html
 //
 // @include http*://*.derstandard.at/*
@@ -43,8 +44,10 @@
 // @include http*://slashdot.org/*
 // @include http*://taz.de/*
 // @include http*://notalwaysright.com/*
+// @include http*://www.nytimes.com/*
 
 // @require http://code.jquery.com/jquery-2.1.1.min.js
+// @require http://code.jquery.com/ui/1.11.2/jquery-ui.js
 // @require https://greasyfork.org/scripts/130-portable-md5-function/code/Portable%20MD5%20Function.js?version=10066
 // was require md5.js 
 // was require http://crypto-js.googlecode.com/svn/tags/3.1.2/build/rollups/md5.js
@@ -65,7 +68,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
-// Tested with Firefox 32 and GreaseMonkey 2.2
+// Tested with FireFox 32 and GreaseMonkey 2.2
 
 //-------------------------------------------------
 //Functions
@@ -76,7 +79,7 @@
 			ageOfUrl: 5, 	// age in days after a url is deleted from the store
 							// < 0 erases all dates (disables history)
 			targetOpacity: 0.3,
-			targetOpacity4Dim: 0.65,
+			targetOpacity4Dim: 0.85,
 			steps: 10,
 			dimInterval: 30000,
 			expireAllDomains: true,		// On fast machines this can be true and expires
@@ -87,15 +90,16 @@
 			considerViewPort: true
 		};
 
-	var defTag = 'a';
-	var defGetContent = function(elem) {
-		if ((typeof elem != 'undefined') && (typeof elem.href != 'undefined')) {
+	var UNDEF = 'undefined';
+	var DEFAULT_TAG = 'a';
+	var defaultGetContentFct = function(elem) {
+		if ((typeof elem != UNDEF) && (typeof elem.href != UNDEF)) {
 			return elem.href;
 		}
-		return 'undefined';
+		return UNDEF;
 	};
-	var defAfterScrollDelay = 750;
-	var DO_DEBUG = false;
+	var AFTER_SCROLL_DELAY = 750;
+	var DO_DEBUG = true; //false;
 	
 	var perUrlSettings = [
   		{
@@ -103,10 +107,10 @@
 			tag : 'article',
 			upTrigger: "../article",
 			getContent: function(elem) {
-				if ((typeof elem != 'undefined') && (typeof elem.id != 'undefined')) {
+				if ((typeof elem != UNDEF) && (typeof elem.id != UNDEF)) {
 					return elem.id;
 				}
-				return 'undefined';
+				return UNDEF;
 			},
 			parentHints : [ ] 
 		},
@@ -138,7 +142,16 @@
 			// class="title may-blank  srTagged imgScanned"
 			upTrigger: "../a[contains(@class, 'title') and contains(@class, 'may-blank')]",
 			parentHints : [ "ancestor::div[contains(concat(' ', @class, ' '), ' thing ')]" ]
-		}
+		},
+		
+		{
+			url : ['nytimes\.com'],
+			upTrigger: "../a",
+			parentHints : [
+					// "ancestor::li[contains(concat(' ', @class, ' '), ' portal-post ')]",
+					"ancestor::div[contains(concat(' ', @class, ' '), ' collection ')]"
+					]
+		}		
 	];
 	
 	var dimMap = {};
@@ -146,17 +159,145 @@
 	var theHRefs = null;
 	var curSettings = null;
 	var keyLastExpireOp = "lastExpire";
-	var timeOutAfterLastScroll = "undefined";
+	var timeOutAfterLastScroll = UNDEF;
 	var tag2Process = null;
 	var getContentFct = null;
 	var theDomain = null;
-	
+
+	var progressbar;
+	var progressLabel;	
+
+	// Styling 
+	var progressBarStyle = 
+		".ui-widget {" + 
+		"	font-family: Verdana,Arial,sans-serif !important;" + 
+		"	font-size: 1.1em !important;" + 
+		"}" + 
+		".ui-widget-content {" + 
+		"	border: 1px solid #aaaaaa !important;" + 
+		"	color: #222222 !important;" + 
+		"}" + 
+		".ui-widget-header {" + 
+		"	border: 1px solid #aaaaaa !important;" + 
+		"	background: #cccccc   !important;" + 
+		"	color: #222222 !important;" + 
+		"	font-weight: bold !important;" + 
+		"}" + 
+		".ui-progressbar {" + 
+		"	height: 2em !important;" + 
+		"	text-align: left !important;" + 
+		"	overflow: hidden !important;" + 
+		"}" + 
+		".ui-progressbar .ui-progressbar-value {" + 
+		"	margin: -1px !important;" + 
+		"	height: 100% !important;" + 
+		"}" + 
+		".ui-progressbar .ui-progressbar-overlay {" + 
+		"	background: url('data:image/gif;base64,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') !important;" + 
+		"	height: 100% !important;" + 
+		"	filter: alpha(opacity=25) !important; /* support: IE8 */" + 
+		"	opacity: 0.25 !important;" + 
+		"}" + 
+//		".ui-progressbar-indeterminate .ui-progressbar-value {" + 
+//		"	background-image: none !important;" + 
+//		"}" + 
+
+		".ui-progressbar {" + 
+		"	height: 2em !important;" + 
+		"	text-align: left !important;" + 
+		"	overflow: hidden !important;" + 
+		" 	position: absolute !important;" + 
+		" 	left: 20% !important;" + 
+		" 	top: 4px !important;" + 
+		" 	width: 60% !important;" + 
+		"   z-index: 255 !important;" +
+		"}" + 
+		".progress-label {" + 
+		"	position: absolute !important;" + 
+		"	left: 5% !important;" + 
+		"	top: 4px !important;" + 
+		"	font-weight: bold !important;" + 
+		"	text-shadow: 1px 1px 0 #fff !important;" + 
+		"   z-index: 256 !important;" +
+		"}";
+		
+	GM_addStyle(progressBarStyle);
+	 
+	// Debugging
 	function debuglog(msg) {
 		if (DO_DEBUG) {
 			console.log(msg);
 		}
 	}
 	
+	var g_i;
+	var g_keys;
+	var g_length;
+	var g_workerFct = function(key) {
+		GM_deleteValue(key);
+	};
+
+	/*
+	 * Init function for "threading"
+	 */
+	function resetAllUrls_init()
+	{
+		if (!confirm('Are you sure you want to erase the complete seen history?')) {
+			return;
+		}
+		
+		g_i = 0;
+		g_keys = GM_listValues();
+		g_length = g_keys.length;
+
+		$("body").append ( '\
+		<div id="progressbar" class="ui-progressbar ui-progressbar-indeterminate"><div class="progress-label">History of the Seen: Resetting DB for current domain...</div></div>');
+		
+		progressbar = $("#progressbar");
+		progressLabel = $(".progress-label");
+
+		progressbar.progressbar({
+			value : false,
+			change : function() {
+				progressLabel.text(" History of the Seen: Cleaning DB, done " + progressbar.progressbar("value").toFixed(2) + "% ");
+			},
+			complete : function() {
+				progressLabel.text(" History of the Seen: Cleaning Complete! ");
+			}
+		});
+
+		progressbar.progressbar("value", 0);
+		setTimeout(resetAllUrls_doit, 1);
+	}
+
+	/*
+	 * Worker method
+	 */
+	function resetAllUrls_doit()
+	{
+		var i = 0;
+		key = null;
+		
+		key = g_keys[g_i];
+		while (i < 5 && key) {
+			GM_deleteValue(key);
+			
+			g_i ++;
+			i++;
+			key = g_keys[g_i];
+		}
+		progressbar.progressbar("value", g_i * 100 / g_length);
+		if (key) {
+			setTimeout(resetAllUrls_doit, 10);
+		} else
+		{
+			$("#progressbar").remove();
+			document.location.reload(true);
+		}
+	}
+	
+	
+	// Resetting section
 	function resetAllUrls() {
 		if (confirm('Are you sure you want to erase the complete seen history?')) {
 			var keys = GM_listValues();
@@ -170,6 +311,7 @@
 	function resetUrlsForCurrentHelper(dKey, domainOrUri) {
 		if (confirm('Are you sure you want to erase the seen history for ' + 
 				domainOrUri + '?')) {
+			
 			var keys = GM_listValues();
 			for (var i=0, key=null; key=keys[i]; i++) {
 				var dict = JSON.parse(GM_getValue(key, "{}"));
@@ -237,8 +379,8 @@
 	}
 
 	function nDaysOlderFromNow(age, aDate, zeroHour) {
-		var aDate = typeof aDate !== 'undefined' ? aDate : new Date();
-		var zeroHour = typeof zeroHour !== 'undefined' ? zeroHour : true;
+		var aDate = typeof aDate !== UNDEF ? aDate : new Date();
+		var zeroHour = typeof zeroHour !== UNDEF ? zeroHour : true;
 		
 		var dateStore = new Date(aDate.getTime());
 		var workDate = aDate;
@@ -335,28 +477,31 @@
 	    var elemTop = $(elem).offset().top;
 	    var elemBottom = elemTop + $(elem).height();
 
-	    return ((elemBottom >= docViewTop) && (elemTop <= docViewBottom)
-	      && (elemBottom <= docViewBottom) &&  (elemTop >= docViewTop) );
+	    return ((elemBottom <= docViewBottom) && (elemTop >= docViewTop));
+
+		// is really fully in view    
+		// return ((elemBottom >= docViewTop) && (elemTop <= docViewBottom)
+		//  && (elemBottom <= docViewBottom) &&  (elemTop >= docViewTop) );
 	}
 
 	/*
-	 * Called after scrolling 
+	 * Called after scrolling finished for defined time
 	 */
 	function evaluateElems() {
 		debuglog("evaluate all");
 		processElements(false);
-		timeOutAfterLastScroll = "undefined";
+		timeOutAfterLastScroll = UNDEF;
 	} 
 	
 	/*
 	 * Wait for scrolling to end
 	 */
-	function onScrollStart()
+	function onScroll()
 	{
-		if (timeOutAfterLastScroll !== "undefined") {
+		if (timeOutAfterLastScroll !== UNDEF) {
 			window.clearTimeout(timeOutAfterLastScroll)
 		}
-		timeOutAfterLastScroll = setTimeout(evaluateElems, defAfterScrollDelay);
+		timeOutAfterLastScroll = setTimeout(evaluateElems, AFTER_SCROLL_DELAY);
 	}
 
 	/*
@@ -377,7 +522,7 @@
 
 			var key = GM_getValue(hash);
 
-			if (typeof key !== 'undefined') {
+			if (typeof key !== UNDEF) {
 				// key found -> loaded this reference already 
 
 				if (firstCall) {
@@ -424,29 +569,29 @@
 //	Menus
 	GM_registerMenuCommand("Remove the seen history for this site.", resetUrlsForCurrentSite);
 	GM_registerMenuCommand("Remove the seen history for this domain.", resetUrlsForCurrentDomain);
-	GM_registerMenuCommand("Remove all seen history (for all sites)!", resetAllUrls);
+	GM_registerMenuCommand("Remove all seen history (for all sites)!", resetAllUrls_init);
+
+	resetAllUrls_doit
 
 	function run_script() {
-		// Vars
-		
 		dimMap = {};
 		theDomain = document.domain;
 
 		curSettings = findPerUrlSettings(perUrlSettings, theDomain);
-		tag2Process = defTag;
-		getContentFct = defGetContent;
-		if (typeof curSettings != 'undefined') {
-			if (typeof curSettings.tag != 'undefined') {
+		tag2Process = DEFAULT_TAG;
+		getContentFct = defaultGetContentFct;
+		if (typeof curSettings != UNDEF) {
+			if (typeof curSettings.tag != UNDEF) {
 				tag2Process = curSettings.tag;
 			}
-			if (typeof curSettings.getContent != 'undefined') {
+			if (typeof curSettings.getContent != UNDEF) {
 				getContentFct = curSettings.getContent;
 			}
 		}
 		
 		expireUrls();
 		processElements(true);
-		window.addEventListener("scroll", onScrollStart, false);
+		window.addEventListener("scroll", onScroll, false);
 	}
 
 	run_script();
