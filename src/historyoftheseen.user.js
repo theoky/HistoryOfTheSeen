@@ -4,7 +4,7 @@
 // @description Script to implement a history of the seen approach for some news sites. Details at https://github.com/theoky/HistoryOfTheSeen
 // @author          Theoky
 // @version	        0.417
-// @lastchanges     The New York Times
+// @lastchanges     "Threading"
 // @license         GNU GPL version 3
 // @released        2014-02-20
 // @updated         2014-11-30
@@ -68,7 +68,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
-// Tested with FireFox 32 and GreaseMonkey 2.2
+// Tested with FireFox 34 and GreaseMonkey 2.3
 
 //-------------------------------------------------
 //Functions
@@ -237,6 +237,19 @@
 		GM_deleteValue(key);
 	};
 
+
+	function appendProgressBar() {
+		$("body").append ( '\
+			<div id="progressbar" class="ui-progressbar ui-progressbar-indeterminate"><div class="progress-label">History of the Seen: Resetting DB for current domain...</div></div>');
+	}
+
+	function removeProgressBar(reload) {
+		$("#progressbar").remove();
+		if (reload) {
+			document.location.reload(true);
+		}
+	}
+	
 	/*
 	 * Init function for "threading"
 	 */
@@ -250,8 +263,11 @@
 		g_keys = GM_listValues();
 		g_length = g_keys.length;
 
-		$("body").append ( '\
-		<div id="progressbar" class="ui-progressbar ui-progressbar-indeterminate"><div class="progress-label">History of the Seen: Resetting DB for current domain...</div></div>');
+		if (!g_keys) {
+			return;
+		}
+		
+		appendProgressBar();
 		
 		progressbar = $("#progressbar");
 		progressLabel = $(".progress-label");
@@ -291,8 +307,7 @@
 			setTimeout(resetAllUrls_doit, 10);
 		} else
 		{
-			$("#progressbar").remove();
-			document.location.reload(true);
+			removeProgressBar(true);
 		}
 	}
 	
@@ -564,15 +579,12 @@
 		}
 	}
 	
-//	Main part
-
 //	Menus
 	GM_registerMenuCommand("Remove the seen history for this site.", resetUrlsForCurrentSite);
 	GM_registerMenuCommand("Remove the seen history for this domain.", resetUrlsForCurrentDomain);
 	GM_registerMenuCommand("Remove all seen history (for all sites)!", resetAllUrls_init);
 
-	resetAllUrls_doit
-
+//	Main part
 	function run_script() {
 		dimMap = {};
 		theDomain = document.domain;
