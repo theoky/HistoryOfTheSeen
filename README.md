@@ -38,17 +38,18 @@ Two links have already been seen but not been deemed clickworthy.
 # What the script does, technically
 It just goes through the a href elements, computes a hash and stores the hash. If it encounters a hash that already has been stored during loading, this link will be painted more transparently.
 
-In addition for some configurable sites it looks up the node hierarchy for special nodes. If such a node is found that node is made more transparent and thus a bigger area is affected.
+In addition, for some configurable sites it looks up the node hierarchy for special nodes. If such a node is found that node with its subnodes is made more transparent and thus a bigger area is affected.
+
+# Features
+* settings (in a way)
+* hiding a specific context of a link (for some sites)
+* hiding links only after some time
+* remembering links only for a configurable time
+* "Threading" when doing some long running database operations
 
 # Shortcomings
 
-A lot. ;) This is a rather early version of this script and it is not very sophisticated. There are a lot of things which might be improved, as
-
-* ~~settings~~ (somewhat done),
-* ~~hiding a specific context of a link~~ (for some sites),
-* ~~hiding links only after some time~~,
-* ~~remembering links only for some time,~~
-* and many more.
+Still a lot. ;) This is an early version of this script. There are a lot of things which might be improved, and you're welcome to send improvements as ideas (or patches ;) ). 
 
 # License
 * The source is licensed under GPL v3 or later.
@@ -56,4 +57,4 @@ A lot. ;) This is a rather early version of this script and it is not very sophi
 (or <http://pajhome.org.uk/crypt/md5/md5.html>) and is licensed under the BSD License.
 
 # Remarks
-Tested with Firefox 31 and GreaseMonkey 2.1
+Tested with Firefox 34 and GreaseMonkey 2.3

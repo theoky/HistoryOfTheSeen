@@ -3,11 +3,11 @@
 // @namespace https://github.com/theoky/HistoryOfTheSeen
 // @description Script to implement a history of the seen approach for some news sites. Details at https://github.com/theoky/HistoryOfTheSeen
 // @author          Theoky
-// @version	        0.417
-// @lastchanges     "Threading"
+// @version	        0.418
+// @lastchanges     "Threading", bug fixes
 // @license         GNU GPL version 3
 // @released        2014-02-20
-// @updated         2014-11-30
+// @updated         2014-12-02
 // @homepageURL   	https://github.com/theoky/HistoryOfTheSeen
 //
 // @grant      GM_getValue
@@ -99,7 +99,7 @@
 		return UNDEF;
 	};
 	var AFTER_SCROLL_DELAY = 750;
-	var DO_DEBUG = true; //false;
+	var DO_DEBUG = false;
 	
 	var perUrlSettings = [
   		{
@@ -221,8 +221,6 @@
 		"   z-index: 256 !important;" +
 		"}";
 		
-	GM_addStyle(progressBarStyle);
-	 
 	// Debugging
 	function debuglog(msg) {
 		if (DO_DEBUG) {
@@ -233,10 +231,12 @@
 	var g_i;
 	var g_keys;
 	var g_length;
-	var g_workerFct = function(key) {
+	var g_workInProgress = false;
+	var g_par1 = UNDEF;
+	var g_par2 = UNDEF;
+	var g_workerFct = function(key, par1, par2) {
 		GM_deleteValue(key);
 	};
-
 
 	function appendProgressBar() {
 		$("body").append ( '\
@@ -253,12 +253,13 @@
 	/*
 	 * Init function for "threading"
 	 */
-	function resetAllUrls_init()
+	function initThreadingLoop()
 	{
-		if (!confirm('Are you sure you want to erase the complete seen history?')) {
+		if (g_workInProgress) {
 			return;
 		}
 		
+		g_workInProgress = true;
 		g_i = 0;
 		g_keys = GM_listValues();
 		g_length = g_keys.length;
@@ -283,20 +284,24 @@
 		});
 
 		progressbar.progressbar("value", 0);
-		setTimeout(resetAllUrls_doit, 1);
+		setTimeout(doThreadWork, 1);
 	}
 
 	/*
 	 * Worker method
 	 */
-	function resetAllUrls_doit()
+	function doThreadWork()
 	{
+		if (!g_workInProgress) {
+			return;
+		}
+		
 		var i = 0;
 		key = null;
 		
 		key = g_keys[g_i];
 		while (i < 5 && key) {
-			GM_deleteValue(key);
+			g_workerFct(key, g_par1, g_par2);
 			
 			g_i ++;
 			i++;
@@ -304,39 +309,50 @@
 		}
 		progressbar.progressbar("value", g_i * 100 / g_length);
 		if (key) {
-			setTimeout(resetAllUrls_doit, 10);
+			setTimeout(doThreadWork, 10);
 		} else
 		{
 			removeProgressBar(true);
+			g_workInProgress = false;
 		}
 	}
 	
 	
 	// Resetting section
 	function resetAllUrls() {
-		if (confirm('Are you sure you want to erase the complete seen history?')) {
-			var keys = GM_listValues();
-			for (var i=0, key=null; key=keys[i]; i++) {
+		if (!g_workInProgress && confirm('Are you sure you want to erase the complete seen history?')) {
+			g_par1 = UNDEF;
+			g_par2 = UNDEF;
+			g_workerFct = function(key, par1, par2) {
 				GM_deleteValue(key);
-			}
-			document.location.reload(true);
+			};
+
+			initThreadingLoop();
 		}
 	}
 
 	function resetUrlsForCurrentHelper(dKey, domainOrUri) {
 		if (confirm('Are you sure you want to erase the seen history for ' + 
 				domainOrUri + '?')) {
-			
-			var keys = GM_listValues();
-			for (var i=0, key=null; key=keys[i]; i++) {
-				var dict = JSON.parse(GM_getValue(key, "{}"));
-				if(dict) {
-					if (dict[dKey] == domainOrUri) {
-						GM_deleteValue(key);
-					}
+			g_par1 = dKey;
+			g_par2 = domainOrUri;
+			g_workerFct = function(key, dKey, domainOrUri) {
+				if (key == keyLastExpireOp){
+					return;
 				}
-			}
-			document.location.reload(true);
+				try {
+					var val = GM_getValue(key, "{}");
+					var dict = JSON.parse(val);
+					if(dict) {
+						if (dict[dKey] == domainOrUri) {
+							GM_deleteValue(key);
+						}
+					}
+				} catch (e) {
+					console.log(e);
+				}
+			};
+			initThreadingLoop();
 		}
 	}
 	
@@ -582,7 +598,9 @@
 //	Menus
 	GM_registerMenuCommand("Remove the seen history for this site.", resetUrlsForCurrentSite);
 	GM_registerMenuCommand("Remove the seen history for this domain.", resetUrlsForCurrentDomain);
-	GM_registerMenuCommand("Remove all seen history (for all sites)!", resetAllUrls_init);
+	GM_registerMenuCommand("Remove all seen history (for all sites)!", resetAllUrls);
+
+	GM_addStyle(progressBarStyle);
 
 //	Main part
 	function run_script() {
