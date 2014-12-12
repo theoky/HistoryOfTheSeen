@@ -3,11 +3,11 @@
 // @namespace https://github.com/theoky/HistoryOfTheSeen
 // @description Script to implement a history of the seen approach for some news sites. Details at https://github.com/theoky/HistoryOfTheSeen
 // @author          Theoky
-// @version	        0.418
-// @lastchanges     "Threading", bug fixes
+// @version	        0.419
+// @lastchanges     more "Threading"
 // @license         GNU GPL version 3
 // @released        2014-02-20
-// @updated         2014-12-02
+// @updated         2014-12-12
 // @homepageURL   	https://github.com/theoky/HistoryOfTheSeen
 //
 // @grant      GM_getValue
@@ -17,7 +17,7 @@
 // @grant      GM_listValues
 // @grant      GM_addStyle
 //
-// for testing purposes (set Firefox greasemonkey.fileIsGreaseable) 
+// for testing purposes (set FireFox greasemonkey.fileIsGreaseable) 
 // @include file://*testhistory.html
 //
 // @include http*://*.derstandard.at/*
@@ -87,7 +87,8 @@
 							// only the urls of the current domain are expired which 
 							// is slightly faster.
 			cleanOnlyDaily: true,
-			considerViewPort: true
+			considerViewPort: true,
+			dbOpsPerRun: 5
 		};
 
 	var UNDEF = 'undefined';
@@ -99,7 +100,7 @@
 		return UNDEF;
 	};
 	var AFTER_SCROLL_DELAY = 750;
-	var DO_DEBUG = false;
+	var DO_DEBUG = true;
 	
 	var perUrlSettings = [
   		{
@@ -158,7 +159,7 @@
 	var countDownTimer = defaultSettings.steps;
 	var theHRefs = null;
 	var curSettings = null;
-	var keyLastExpireOp = "lastExpire";
+	var KEY_LAST_EXPIRE_OP = "lastExpire";
 	var timeOutAfterLastScroll = UNDEF;
 	var tag2Process = null;
 	var getContentFct = null;
@@ -228,15 +229,21 @@
 		}
 	}
 	
-	var g_i;
+	var g_index;
 	var g_keys;
-	var g_length;
+	var g_lengthOfKeysArray;
 	var g_workInProgress = false;
 	var g_par1 = UNDEF;
 	var g_par2 = UNDEF;
-	var g_workerFct = function(key, par1, par2) {
+	var g_workerFctDefault = function(key, par1, par2) {
 		GM_deleteValue(key);
 	};
+	var g_workerFct = g_workerFctDefault;
+	var g_finishFct_Default = function() {
+		document.location.reload(true);
+	};
+	var g_finishFct = g_finishFct_Default;
+	var g_label;
 
 	function appendProgressBar() {
 		$("body").append ( '\
@@ -260,9 +267,9 @@
 		}
 		
 		g_workInProgress = true;
-		g_i = 0;
+		g_index = 0;
 		g_keys = GM_listValues();
-		g_length = g_keys.length;
+		g_lengthOfKeysArray = g_keys.length;
 
 		if (!g_keys) {
 			return;
@@ -276,10 +283,10 @@
 		progressbar.progressbar({
 			value : false,
 			change : function() {
-				progressLabel.text(" History of the Seen: Cleaning DB, done " + progressbar.progressbar("value").toFixed(2) + "% ");
+				progressLabel.text(g_label + progressbar.progressbar("value").toFixed(2) + "% ");
 			},
 			complete : function() {
-				progressLabel.text(" History of the Seen: Cleaning Complete! ");
+				progressLabel.text(" History of the Seen: Operation Complete! ");
 			}
 		});
 
@@ -297,22 +304,25 @@
 		}
 		
 		var i = 0;
-		key = null;
+		var currentKey = null;
 		
-		key = g_keys[g_i];
-		while (i < 5 && key) {
-			g_workerFct(key, g_par1, g_par2);
+		currentKey = g_keys[g_index];
+		while (i < defaultSettings.dbOpsPerRun && currentKey) {
+			g_workerFct(currentKey, g_par1, g_par2);
 			
-			g_i ++;
+			g_index ++;
 			i++;
-			key = g_keys[g_i];
+			currentKey = g_keys[g_index];
 		}
-		progressbar.progressbar("value", g_i * 100 / g_length);
-		if (key) {
+		progressbar.progressbar("value", g_index * 100 / g_lengthOfKeysArray);
+		if (currentKey) {
 			setTimeout(doThreadWork, 10);
 		} else
 		{
-			removeProgressBar(true);
+			removeProgressBar(false);
+			if (g_finishFct !== UNDEF) {
+				g_finishFct();
+			}
 			g_workInProgress = false;
 		}
 	}
@@ -321,12 +331,11 @@
 	// Resetting section
 	function resetAllUrls() {
 		if (!g_workInProgress && confirm('Are you sure you want to erase the complete seen history?')) {
+			g_label = " History of the Seen: Cleaning DB, done ";
 			g_par1 = UNDEF;
 			g_par2 = UNDEF;
-			g_workerFct = function(key, par1, par2) {
-				GM_deleteValue(key);
-			};
-
+			g_workerFct = g_workerFctDefault;
+			g_finishFct = g_finishFct_Default;
 			initThreadingLoop();
 		}
 	}
@@ -334,10 +343,11 @@
 	function resetUrlsForCurrentHelper(dKey, domainOrUri) {
 		if (confirm('Are you sure you want to erase the seen history for ' + 
 				domainOrUri + '?')) {
+			g_label = " History of the Seen: Cleaning DB, done ";
 			g_par1 = dKey;
 			g_par2 = domainOrUri;
 			g_workerFct = function(key, dKey, domainOrUri) {
-				if (key == keyLastExpireOp){
+				if (key == KEY_LAST_EXPIRE_OP){
 					return;
 				}
 				try {
@@ -352,6 +362,7 @@
 					console.log(e);
 				}
 			};
+			g_finishFct = g_finishFct_Default;
 			initThreadingLoop();
 		}
 	}
@@ -366,31 +377,29 @@
 
 	function expireUrls()	{
 		if (defaultSettings.cleanOnlyDaily) {
-			var lastExpireDate = new Date(GM_getValue(keyLastExpireOp, nDaysOlderFromNow(2)));
+			var lastExpireDate = new Date(GM_getValue(KEY_LAST_EXPIRE_OP, nDaysOlderFromNow(2)));
 			var diff = Math.abs((new Date()) - lastExpireDate);
 			if (diff / 1000 / 3600 / 24 < 1) {
 				// less than one day -> no DB cleaning
+				debuglog("less than one day -> no DB cleaning");
+				//return;
+			}
+		}
+
+		// cutOffDate
+		g_label = " History of the Seen: Expiring old URLs for this site, done ";
+		g_par1 = nDaysOlderFromNow(defaultSettings.ageOfUrl);
+		debuglog("cutOffDate" + g_par1);
+		g_par2 = UNDEF;
+		g_workerFct = function(key, cutOffDate, par2) {
+			if (key == KEY_LAST_EXPIRE_OP){
 				return;
 			}
-		}
-
-		var keys = GM_listValues();
-		if (!keys) {
-			return;
-		}
-
-		var cutOffDate = nDaysOlderFromNow(defaultSettings.ageOfUrl);
-
-		for (var i=0, key=null; key=keys[i]; i++) {
-			if (key == keyLastExpireOp){
-				continue;
-			}
-				
-			var dict = JSON.parse(GM_getValue(key, "{}"));
 			
+			var dict = JSON.parse(GM_getValue(key, "{}"));
 			if(dict) {
 				try {
-					// console.log(dict["domain"], cutOffDate.getTime(), dict["date"]);
+					debuglog(dict["domain"], cutOffDate.getTime(), dict["date"]);
 					if (cutOffDate.getTime() > dict["date"]) {
 						if (defaultSettings.expireAllDomains ||
 							(dict["domain"] == document.domain))
@@ -403,10 +412,13 @@
 				}
 			}
 			else {
-				console.log('Error! JSON.parse failed - dict is likely to be corrupted.');
+				console.log('Error! JSON.parse failed - dict is likely to be corrupted. Probably best to complete clean DB.');
 			}
+		};
+		g_finishFct = function() {
+			GM_setValue(KEY_LAST_EXPIRE_OP, new Date());
 		}
-		GM_setValue(keyLastExpireOp, new Date());
+		initThreadingLoop();
 	}
 
 	function nDaysOlderFromNow(age, aDate, zeroHour) {
