@@ -7,7 +7,7 @@
 // @lastchanges     more "Threading"
 // @license         GNU GPL version 3
 // @released        2014-02-20
-// @updated         2014-12-12
+// @updated         2014-12-14
 // @homepageURL   	https://github.com/theoky/HistoryOfTheSeen
 //
 // @grant      GM_getValue
@@ -100,7 +100,7 @@
 		return UNDEF;
 	};
 	var AFTER_SCROLL_DELAY = 750;
-	var DO_DEBUG = true;
+	var DO_DEBUG = false;
 	
 	var perUrlSettings = [
   		{
@@ -263,6 +263,7 @@
 	function initThreadingLoop()
 	{
 		if (g_workInProgress) {
+			debuglog("error: initThreading with already threading in progress.");
 			return;
 		}
 		
@@ -381,8 +382,7 @@
 			var diff = Math.abs((new Date()) - lastExpireDate);
 			if (diff / 1000 / 3600 / 24 < 1) {
 				// less than one day -> no DB cleaning
-				debuglog("less than one day -> no DB cleaning");
-				//return;
+				return;
 			}
 		}
 
