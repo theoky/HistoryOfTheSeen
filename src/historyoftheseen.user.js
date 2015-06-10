@@ -3,11 +3,11 @@
 // @namespace https://github.com/theoky/HistoryOfTheSeen
 // @description Script to implement a history of the seen approach for some news sites. Details at https://github.com/theoky/HistoryOfTheSeen
 // @author          Theoky
-// @version	        0.419
-// @lastchanges     more "Threading"
+// @version	        0.4192
+// @lastchanges     workaround for bug in GreaseMonkey 3.2
 // @license         GNU GPL version 3
 // @released        2014-02-20
-// @updated         2014-12-14
+// @updated         2014-06-10
 // @homepageURL   	https://github.com/theoky/HistoryOfTheSeen
 //
 // @grant      GM_getValue
@@ -53,7 +53,7 @@
 // was require http://crypto-js.googlecode.com/svn/tags/3.1.2/build/rollups/md5.js
 // ==/UserScript==
 
-// Copyright (C) 2014  T. Kopetzky - theoky
+// Copyright (C) 2015  T. Kopetzky - theoky
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -73,7 +73,7 @@
 //-------------------------------------------------
 //Functions
 
-//(function(){
+(function(){
 
 	var defaultSettings = {
 			ageOfUrl: 5, 	// age in days after a url is deleted from the store
@@ -101,6 +101,9 @@
 	};
 	var AFTER_SCROLL_DELAY = 750;
 	var DO_DEBUG = false;
+	var DEBUG_LVL_ERROR = 1;
+	var DEBUG_LVL_WARN = 2;
+	var DEBUG_LVL_INFO = 4;
 	
 	var perUrlSettings = [
   		{
@@ -229,6 +232,20 @@
 		}
 	}
 	
+	function debugLogLvl(lvl, msg) {
+		if (lvl & DEBUG_LVL_ERROR) {
+			console.log("error: " + msg);
+		} 
+		if (DO_DEBUG) {
+			if (lvl & DEBUG_LVL_WARN) {
+				console.log("warn:" + msg);
+			} 
+			if (lvl & DEBUG_LVL_INFO) {
+				console.log(msg);
+			} 
+		}
+	}
+
 	var g_index;
 	var g_keys;
 	var g_lengthOfKeysArray;
@@ -263,19 +280,20 @@
 	function initThreadingLoop()
 	{
 		if (g_workInProgress) {
-			debuglog("error: initThreading with already threading in progress.");
+			debugLogLvl(DEBUG_LVL_ERROR, "initThreading with already threading in progress.");
 			return;
 		}
 		
 		g_workInProgress = true;
 		g_index = 0;
 		g_keys = GM_listValues();
-		g_lengthOfKeysArray = g_keys.length;
 
 		if (!g_keys) {
+			debugLogLvl(DEBUG_LVL_WARN, "g_keys empty?"); 
 			return;
 		}
-		
+
+		g_lengthOfKeysArray = g_keys.length;
 		appendProgressBar();
 		
 		progressbar = $("#progressbar");
@@ -377,6 +395,7 @@
 	}
 
 	function expireUrls()	{
+		debugLogLvl(DEBUG_LVL_INFO, "expireUrls");
 		if (defaultSettings.cleanOnlyDaily) {
 			var lastExpireDate = new Date(GM_getValue(KEY_LAST_EXPIRE_OP, nDaysOlderFromNow(2)));
 			var diff = Math.abs((new Date()) - lastExpireDate);
@@ -386,6 +405,16 @@
 			}
 		}
 
+		/*
+		var val = GM_getValue(KEY_EXPIRE_OP_INPROGRESS);
+
+		if (typeof val !== UNDEF) {
+			// expire in progress
+			return;
+		}
+		GM_setValue(KEY_EXPIRE_OP_INPROGRESS, True);
+
+		 */
 		// cutOffDate
 		g_label = " History of the Seen: Expiring old URLs for this site, done ";
 		g_par1 = nDaysOlderFromNow(defaultSettings.ageOfUrl);
@@ -412,7 +441,7 @@
 				}
 			}
 			else {
-				console.log('Error! JSON.parse failed - dict is likely to be corrupted. Probably best to complete clean DB.');
+				console.log('Error! JSON.parse failed - dict is likely to be corrupted. Probably best to completely clean DB.');
 			}
 		};
 		g_finishFct = function() {
@@ -440,6 +469,8 @@
 	 * Find the settings for a given URL
 	 */
 	function findPerUrlSettings(theSettings, aDomain) {
+		debugLogLvl(DEBUG_LVL_INFO, "findPerUrlSettings");
+		
 		for (var i=0; i < theSettings.length; ++i) {
 			for (var j = 0; j < theSettings[i].url.length; ++j) {
 				var myRegExp = new RegExp(theSettings[i].url[j], 'i');
@@ -514,6 +545,7 @@
 	 */
 	function isFullyInView(elem)
 	{
+		debugLogLvl(DEBUG_LVL_INFO, "isFullyInView");
 	    var docViewTop = $(window).scrollTop();
 	    var docViewBottom = docViewTop + $(window).height();
 
@@ -531,7 +563,7 @@
 	 * Called after scrolling finished for defined time
 	 */
 	function evaluateElems() {
-		debuglog("evaluate all");
+		debugLogLvl(DEBUG_LVL_INFO, "evaluate all");
 		processElements(false);
 		timeOutAfterLastScroll = UNDEF;
 	} 
@@ -551,6 +583,7 @@
 	 * Process all elements
 	 */
 	function processElements(firstCall) {
+		debugLogLvl(DEBUG_LVL_INFO, "processElements");
 		var allTagElems = document.getElementsByTagName(tag2Process);
 		var elemMap = {};
 		var theBase = document.baseURI;
@@ -562,11 +595,16 @@
 		{
 			var hash = 'm' + hex_md5(getContentFct(allTagElems[i]));
 			// setValue needs letter in the beginning, thus use of 'm'
+			debugLogLvl(DEBUG_LVL_INFO, "hash: " + hash);
 
 			var key = GM_getValue(hash);
 
-			if (typeof key !== UNDEF) {
+			
+			if (typeof key !== UNDEF && key !== null) {
+				// workaround for issue https://github.com/greasemonkey/greasemonkey/issues/2156
+				
 				// key found -> loaded this reference already 
+				debugLogLvl(DEBUG_LVL_INFO, "key found");
 
 				if (firstCall) {
 					var done = false;
@@ -581,11 +619,14 @@
 					if (!done) {
 						// change display
 						allTagElems[i].style.opacity = defaultSettings.targetOpacity;
+						debugLogLvl(DEBUG_LVL_INFO, "changing opacity");
 					}
 				}
 				
 			} else {
 				//check if element is fully visible
+				debugLogLvl(DEBUG_LVL_INFO, "key not found");
+				
 				if (isFullyInView(allTagElems[i])) {
 					debuglog(allTagElems[i] + " is in view");
 
@@ -616,6 +657,7 @@
 
 //	Main part
 	function run_script() {
+		debugLogLvl(DEBUG_LVL_INFO, "run");
 		dimMap = {};
 		theDomain = document.domain;
 
@@ -637,4 +679,4 @@
 	}
 
 	run_script();
-//})();
+ })();
